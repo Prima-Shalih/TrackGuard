@@ -44,10 +44,12 @@ Implementasi  software melibatkan pemrograman ESP32 untuk mengumpulkan dan mentr
 
 Selama langkah pengujian, kami menguji fungsionalitas perangkat dengan meletakkan rangkaian pada dua tempat yang berbeda, yaitu
 
-- Lokasi DTE 
+- Lokasi DTE
+  
 ![DTE](https://i.ibb.co/tQ1T8Gg/Testing-DTE1.png)
 ![DTE ThingsBoard](https://i.ibb.co/Kmh6HV4/Testing-DTE.png)
 - Lokasi Pusgiwa
+  
 ![PUSGIWA](https://i.ibb.co/TRv5PvH/Testing-PUSGIWA1.png)
 ![PUSGIWA ThingsBoard](https://i.ibb.co/7QgN5g2/Testing-PUSGIWA.png)
 
