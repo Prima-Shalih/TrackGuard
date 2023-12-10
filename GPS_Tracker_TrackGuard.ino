@@ -1,82 +1,111 @@
-#include <WiFi.h>
-#include <ThingsBoard.h>
-#include "Arduino_MQTT_Client.h"
+#include <ArduinoJson.h>
 #include <TinyGPS++.h>
-#include <AceButton.h>
-#include <TinyGsmClient.h>
-#include <BlynkSimpleSIM800.h>
-#include <Wire.h>
-#include "utilities.h"
+#include <HardwareSerial.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
 
-// RX GSM D2
-// TX GSM D4
-// RX GPS KE TX2
-// TX GPS KE RX2
-// LED KE D22 SAMA BUZZER KE D23
-
-#define rxPin 22
-#define txPin 24
-HardwareSerial sim800(1);
-
-#define RXD2 27
-#define TXD2 25
-HardwareSerial neogps(2);
-
-#define ledPin 39
-#define buzzerPin 36
+#define RXPin 16
+#define TXPin 17
+#define GPSBaud 9600
+#define LED_PIN 22
+#define BUZZER_PIN 23 // Define buzzer pin
 
 TinyGPSPlus gps;
+HardwareSerial mygps(1);
 
-// ThingsBoard configuration
-const char* thingsboardServer = "thingsboard.cloud"; // Enter ThingsBoard server instance
-const char* accessToken = "mqkb1ts57g5kwbstv04m"; // Enter your Device Access Token
-
-// Initialize the Ethernet client object
 WiFiClient espClient;
-// Initalize the Mqtt client instance
-Arduino_MQTT_Client mqttClient(espClient);
-// Initialize ThingsBoard instance
-ThingsBoard tb(mqttClient, 128U);
+PubSubClient client(espClient);
+
+const char* server = "thingsboard.cloud";
+const char* token = "mqkb1ts57g5kwbstv04m";
+
+float latitude;
+float longitude;
 
 void setup() {
  Serial.begin(115200);
- Serial.println("esp32 serial initialize");
- 
- sim800.begin(9600, SERIAL_8N1, rxPin, txPin);
- Serial.println("SIM800L serial initialize");
+ mygps.begin(GPSBaud, SERIAL_8N1, RXPin, TXPin);
 
- neogps.begin(9600, SERIAL_8N1, RXD2, TXD2);
- Serial.println("neogps serial initialize");
- 
- pinMode(ledPin, OUTPUT);
- pinMode(buzzerPin, OUTPUT);
+ if (!mygps) {
+  Serial.println("Failed to initialize GPS");
+ } else {
+  Serial.println("Success to initialize GPS");
+ }
 
- TinyGsm modem(sim800);
- modem.restart();
- modem.gprsConnect("your_apn", "your_username", "your_password");
+ // Print GPS data for 30 seconds
+ for (unsigned long startMillis = millis(); millis() - startMillis < 30000; ) {
+  while (mygps.available()) {
+    Serial.write(mygps.read());
+  }
+ }
 
-     while(!tb.connected()){
-      tb.connect(thingsboardServer, accessToken);
-      vTaskDelay(3000 / portTICK_PERIOD_MS); // delay for 5 seconds
-    }
-    Serial.println("Thingsboard is Connected");
+ client.setServer(server, 1883);
+
+ WiFi.begin("ketum", "imesukses");
+ while (WiFi.status() != WL_CONNECTED) {
+  delay(500);
+  Serial.println("Connecting to WiFi...");
+ }
+ Serial.println("Connected to WiFi");
+
+ pinMode(LED_PIN, OUTPUT);
+ pinMode(BUZZER_PIN, OUTPUT); // Set buzzer pin as output
 }
 
 void loop() {
+ while (mygps.available() > 0) {
+ if (gps.encode(mygps.read())) {
+ displayInfo();
+ }
+ }
+
+ if (!client.connected()) {
+ reconnect();
+ }
+ client.loop();
+
+ if (WiFi.status() == WL_CONNECTED) {
+ digitalWrite(LED_PIN, HIGH);
+ digitalWrite(BUZZER_PIN, HIGH); // Turn buzzer ON
+ } else {
+ digitalWrite(LED_PIN, LOW);
+ digitalWrite(BUZZER_PIN, LOW); // Turn buzzer OFF
+ }
+}
+
+void displayInfo() {
  if (gps.location.isValid()) {
-   tb.sendTelemetryFloat("latitude", gps.location.lat());
-   tb.sendTelemetryFloat("longitude", gps.location.lng());
- }
+ latitude = (gps.location.lat());
+ longitude = (gps.location.lng());
 
- if (tb.getRPCValue("led")) {
-   digitalWrite(ledPin, HIGH);
- } else {
-   digitalWrite(ledPin, LOW);
- }
+ Serial.print("Latitude: ");
+ Serial.println(latitude, 6);
+ Serial.print("Longitude: ");
+ Serial.println(longitude, 6);
 
- if (tb.getRPCValue("buzzer")) {
-   digitalWrite(buzzerPin, HIGH);
+ String latStr = String(latitude, 6);
+ String lonStr = String(longitude, 6);
+
+ char latChar[latStr.length() + 1];
+ char lonChar[lonStr.length() + 1];
+
+ latStr.toCharArray(latChar, latStr.length() + 1);
+ lonStr.toCharArray(lonChar, lonStr.length() + 1);
+
+ client.publish("v1/devices/me/telemetry/latitude", latChar);
+ client.publish("v1/devices/me/telemetry/longitude", lonChar);
  } else {
-   digitalWrite(buzzerPin, LOW);
+ Serial.println("GPS data is not valid");
+ }
+}
+
+void reconnect() {
+ while (!client.connected()) {
+ if (client.connect("ESP32Client", token, NULL)) {
+ Serial.println("Connected to Thingsboard");
+ } else {
+ Serial.println("Failed to connect, retrying...");
+ delay(5000);
+ }
  }
 }
